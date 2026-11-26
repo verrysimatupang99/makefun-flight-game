@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Awan Valley Ring Run — a 3D flight game</title>
+<style>
+  :root {
+    --gold: #ffd34d;
+    --red: #ff5a3c;
+    --ink: #0a1420;
+    --panel: rgba(8, 18, 32, 0.62);
+    --panel-line: rgba(245, 242, 232, 0.22);
+    --text: #f5f2e8;
+    --muted: #cfe3f5;
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a1420;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text); }
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .hidden { display: none !important; }
+
+  /* ---- HUD ---- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  #hud.dimmed .panel { opacity: 0.35; }
+  .panel { background: var(--panel); border: 1px solid var(--panel-line); border-radius: 10px;
+    padding: 10px 14px; backdrop-filter: blur(3px); }
+  .label { font-size: 11px; letter-spacing: 0.18em; color: var(--muted); text-transform: uppercase; }
+  .big { font-size: 26px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  #hud-instruments { position: absolute; top: 14px; left: 14px; display: flex; gap: 10px; }
+  #hud-instruments .panel { min-width: 108px; }
+  #hud-compass { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    width: 260px; height: 30px; border-radius: 8px; border: 1px solid var(--panel-line); }
+  #hud-right { position: absolute; top: 14px; right: 14px; text-align: right; display: flex;
+    flex-direction: column; gap: 10px; align-items: flex-end; }
+  #hud-right .panel { min-width: 170px; }
+  #hud-fuel-row { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+  .bar { width: 130px; height: 12px; background: rgba(255,255,255,0.15); border-radius: 6px; overflow: hidden; }
+  .bar > div { height: 100%; background: linear-gradient(90deg, #37c978, #8fe388); border-radius: 6px; }
+  .bar > div.low { background: linear-gradient(90deg, #ff5a3c, #ff8a5c); }
+  #throttle-fill { background: linear-gradient(90deg, #3fa7ff, #8fd0ff); }
+  #hud-bottom { position: absolute; left: 14px; bottom: 14px; display: flex; gap: 10px; align-items: flex-end; }
+  #attitude { width: 110px; height: 110px; border-radius: 50%; border: 1px solid var(--panel-line); background: var(--panel); }
+  #hud-objective-bar { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+    text-align: center; max-width: 560px; }
+  #hud-objective { font-size: 15px; font-weight: 600; }
+  #hud-rings { margin-top: 6px; display: flex; gap: 6px; justify-content: center; }
+  .ring-dot { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--muted);
+    display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--muted); }
+  .ring-dot.next { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 10px rgba(255, 211, 77, 0.55); }
+  .ring-dot.done { background: #37c978; border-color: #37c978; color: #08210f; }
+  #hud-message { position: absolute; top: 22%; left: 50%; transform: translateX(-50%);
+    font-size: 22px; font-weight: 800; color: var(--gold); text-shadow: 0 2px 10px rgba(0,0,0,0.7);
+    opacity: 0; transition: opacity 0.25s; text-align: center; white-space: nowrap; }
+  #hud-message.show { opacity: 1; }
+  #hud-help { position: absolute; right: 14px; bottom: 14px; font-size: 12px; color: var(--muted);
+    text-align: right; line-height: 1.6; }
+  #hud-mode { position: absolute; left: 14px; top: 118px; font-size: 11px; letter-spacing: 0.18em;
+    color: var(--muted); text-transform: uppercase; }
+
+  /* ---- Overlays ---- */
+  .overlay { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at center, rgba(8,18,32,0.25) 0%, rgba(8,18,32,0.72) 100%); }
+  .card { max-width: 620px; margin: 20px; padding: 34px 40px; background: rgba(8, 18, 32, 0.82);
+    border: 1px solid var(--panel-line); border-radius: 16px; text-align: center; backdrop-filter: blur(4px); }
+  .card h1 { margin: 0 0 6px; font-size: 40px; letter-spacing: 0.04em; color: var(--gold); }
+  .card h2 { margin: 0 0 10px; font-size: 30px; color: var(--gold); }
+  .card p { color: var(--muted); font-size: 15px; line-height: 1.55; margin: 10px 0; }
+  .card .score-line { font-size: 18px; color: var(--text); font-weight: 700; }
+  .controls { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; text-align: left;
+    margin: 16px auto 6px; width: fit-content; font-size: 14px; color: var(--muted); }
+  .controls b { color: var(--text); font-weight: 700; white-space: nowrap; }
+  .btn { pointer-events: auto; cursor: pointer; border: none; border-radius: 10px; padding: 13px 26px;
+    font-size: 16px; font-weight: 800; margin: 8px 6px 0; color: #1a1206; background: var(--gold); }
+  .btn:hover { filter: brightness(1.1); }
+  .btn.ghost { background: transparent; color: var(--text); border: 1.5px solid var(--panel-line); }
+  #selftest { position: fixed; left: -9999px; top: 0; }
+  #webgl-error { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: #0a1420; color: var(--text); font-size: 18px; padding: 40px; text-align: center; }
+</style>
+</head>
+<body>
+<canvas id="scene" aria-label="Awan Valley Ring Run: a 3D flight game. Fly the ring course and land on the runway."></canvas>
+
+<div id="hud">
+  <div id="hud-instruments">
+    <div class="panel"><div class="label">Altitude</div><div class="big" id="hud-alt">0 ft</div></div>
+    <div class="panel"><div class="label">Airspeed</div><div class="big" id="hud-speed">0 kt</div></div>
+    <div class="panel"><div class="label">Heading</div><div class="big" id="hud-heading">000° N</div></div>
+  </div>
+  <canvas id="hud-compass" width="260" height="30"></canvas>
+  <div id="hud-mode">Ring Run</div>
+  <div id="hud-right">
+    <div class="panel">
+      <div class="label">Fuel</div>
+      <div id="hud-fuel-row"><div class="bar"><div id="fuel-fill" style="width:100%"></div></div><span id="hud-fuel">100%</span></div>
+    </div>
+    <div class="panel">
+      <div class="label">Score · Time</div>
+      <div class="big"><span id="hud-score">0</span> · <span id="hud-timer">0:00</span></div>
+    </div>
+    <div class="panel">
+      <div class="label">Throttle</div>
+      <div id="hud-fuel-row"><div class="bar"><div id="throttle-fill" style="width:0%"></div></div><span id="hud-throttle">0%</span></div>
+    </div>
+  </div>
+  <div id="hud-bottom">
+    <canvas id="attitude" width="110" height="110" aria-label="Attitude indicator"></canvas>
+  </div>
+  <div id="hud-objective-bar" class="panel">
+    <div id="hud-objective">Fly through ring 1 of 8 — follow the gold gate.</div>
+    <div id="hud-rings"></div>
+  </div>
+  <div id="hud-message"></div>
+  <div id="hud-help">↑↓ pitch · ←→ roll · W/S throttle · Space brake<br>R reset · P pause · M sound · F free fly · drag to look</div>
+</div>
+
+<div id="overlay-title" class="overlay">
+  <div class="card">
+    <h1 id="title-heading">AWAN VALLEY RING RUN</h1>
+    <p id="title-sub">Fly the ring course, mind your fuel, bring her home.</p>
+    <p>Eight glowing gates wind across the valley — over the lake, through the
+    mountain gap, and home. Each gate pays <b>100 points</b> and a splash of fuel.
+    Fly them all, then put her down gently on the runway. Hit the ground hard,
+    ditch in the lake, or run dry, and the sortie is over.</p>
+    <div class="controls">
+      <b>↑ / ↓</b><span>Pitch up / down</span>
+      <b>← / → or A / D</b><span>Bank and turn</span>
+      <b>W / S</b><span>Throttle up / down</span>
+      <b>Space</b><span>Airbrake (slow down for landing)</span>
+      <b>R · P · M · F</b><span>Reset · Pause · Sound · Free fly</span>
+    </div>
+    <button class="btn" id="btn-start">Take off — fly the rings</button>
+    <button class="btn ghost" id="btn-freefly">Free fly</button>
+  </div>
+</div>
+
+<div id="overlay-pause" class="overlay hidden">
+  <div class="card">
+    <h2>Paused</h2>
+    <p>The valley waits. Press P or resume when you are ready.</p>
+    <button class="btn" id="btn-resume">Resume flying</button>
+    <button class="btn ghost" id="btn-restart">Reset to runway</button>
+  </div>
+</div>
+
+<div id="overlay-crash" class="overlay hidden">
+  <div class="card">
+    <h2>Down she goes</h2>
+    <p id="crash-text">Crashed.</p>
+    <p class="score-line" id="crash-score"></p>
+    <button class="btn" id="btn-flyagain">Fly again</button>
+  </div>
+</div>
+
+<div id="overlay-win" class="overlay hidden">
+  <div class="card">
+    <h2>Welcome home, pilot</h2>
+    <p id="win-text">Landed safely!</p>
+    <p class="score-line" id="win-score"></p>
+    <button class="btn" id="btn-flyagain-win">Fly the course again</button>
+  </div>
+</div>
+
+<div id="webgl-error" class="hidden">This game needs WebGL. Please open it in a desktop browser with hardware acceleration enabled.</div>
+<pre id="selftest"></pre>
+<p id="status" role="status" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;"></p>
+
+<script src="./vendor/three.min.js"></script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
